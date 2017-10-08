@@ -7,6 +7,8 @@
 #define BLUETOOTH_TX_PIN 10
 #define BLUETOOTH_RX_PIN 11
 #define SERVO_PIN 6
+#define STEERING_MIN_ANGLE 150
+#define STEERING_MAX_ANGLE 90
 #define MOTOR_LPWM 5
 #define MOTOR_RPWM 3
 
@@ -112,7 +114,7 @@ void getJoystickState(byte data[8])    {
   // Your code here ...
   /////////////////////////////////////////
   main_motor(joyY);
-  servo.write(map(joyX, -99, 99, 90, 150));
+  servo.write(map(joyX, -99, 99, STEERING_MIN_ANGLE, STEERING_MAX_ANGLE));
   /////////////////////////////////////////
 }
 
