@@ -7,9 +7,9 @@
 #define BLUETOOTH_TX_PIN 10
 #define BLUETOOTH_RX_PIN 11
 #define SERVO_PIN 6
-#define MOTOR_IN3_PIN 5
-#define MOTOR_IN4_PIN 4
-#define MOTOR_ENB_PIN 3
+#define MOTOR_LPWM 5
+#define MOTOR_RPWM 3
+
 #define MOTOR_MOSFET_GATE_PIN 9
 
 #define    STX          0x02
@@ -30,15 +30,12 @@ void setup() {
  while (!Serial) {
     ; // wait for serial port to connect. Needed for native USB port only
  }
- Serial.println("Goodnight moon!");
  servo.attach(SERVO_PIN);
  mySerial.begin(57600);   // 57600 = max value for SoftwareSerial
- pinMode (MOTOR_ENB_PIN, OUTPUT); 
- pinMode (MOTOR_IN3_PIN, OUTPUT);
- pinMode (MOTOR_IN4_PIN, OUTPUT);
+ pinMode (MOTOR_LPWM, OUTPUT);
+ pinMode (MOTOR_RPWM, OUTPUT);
  pinMode (MOTOR_MOSFET_GATE_PIN, OUTPUT);
 // while(mySerial.available())  mySerial.read();         // empty RX buffer
- mySerial.println("Hello, world?");
 }
 
 void loop() {
@@ -65,76 +62,44 @@ void loop() {
  Serial.flush();
 // sendBlueToothData(); 
 }
-  
 
-//void sendBlueToothData()  {
-// static long previousMillis = 0;                             
-// long currentMillis = millis();
-// if(currentMillis - previousMillis > sendInterval) {   // send data back to smartphone
-//   previousMillis = currentMillis; 
-//
-//// Data frame transmitted back from Arduino to Android device:
-//// < 0X02   Buttons state   0X01   DataField#1   0x04   DataField#2   0x05   DataField#3    0x03 >  
-//// < 0X02      "01011"      0X01     "120.00"    0x04     "-4500"     0x05  "Motor enabled" 0x03 >    // example
-//
-//   mySerial.print((char)STX);                                             // Start of Transmission
-//   mySerial.print(getButtonStatusString());  mySerial.print((char)0x1);   // buttons status feedback
-//   mySerial.print(GetdataInt1());            mySerial.print((char)0x4);   // datafield #1
-//   mySerial.print(GetdataFloat2());          mySerial.print((char)0x5);   // datafield #2
-//   mySerial.print(displayStatus);                                         // datafield #3
-//   mySerial.print((char)ETX);                                             // End of Transmission
-// }  
-//}
-
-void second_motor(int joystick_val) {
+void main_motor(int joystick_val) {
   byte motor_speed = 0;
-  Serial.print("joystick_val = ");
-  Serial.println(joystick_val);
-  
+ 
   if (joystick_val > 5) {
     motor_speed = map(joystick_val, 10, 99, 30, 200);
-    motor_controller(MOVE_FORWARD, motor_speed, MOTOR_IN3_PIN, MOTOR_IN4_PIN, MOTOR_ENB_PIN);
+    motor_controller(MOVE_FORWARD, motor_speed, MOTOR_LPWM, MOTOR_RPWM);
   }
   if (joystick_val < -5) {
     motor_speed = map((-1) * joystick_val, 10, 99, 30, 200);
-    motor_controller(MOVE_BACKWARD, motor_speed, MOTOR_IN3_PIN, MOTOR_IN4_PIN, MOTOR_ENB_PIN);
+    motor_controller(MOVE_BACKWARD, motor_speed, MOTOR_LPWM, MOTOR_RPWM);
   }
   if (joystick_val > -5 && joystick_val < 5) {
     motor_speed = 0;
-    motor_controller(STOP, motor_speed, MOTOR_IN3_PIN, MOTOR_IN4_PIN, MOTOR_ENB_PIN);
+    motor_controller(STOP, motor_speed, MOTOR_LPWM, MOTOR_RPWM);
   }
 }
 
 void motor_controller(int motor_direction,
                       byte motor_speed,
-                      byte first_in_pin,
-                      byte second_in_pin,
-                      byte enb_pin) {
+                      byte lpw_pin,
+                      byte rpw_pin) {
   switch (motor_direction) {
     case MOVE_FORWARD:
-      Serial.println("FORWARD"); 
-      motor_driver(first_in_pin, HIGH, second_in_pin, LOW, enb_pin, motor_speed);
+      analogWrite(lpw_pin, motor_speed);
+      analogWrite(rpw_pin, 0);
       break;
     case MOVE_BACKWARD:
-      Serial.println("MOVE_BACKWARD"); 
-      motor_driver(first_in_pin, LOW, second_in_pin, HIGH, enb_pin, motor_speed);
+      analogWrite(lpw_pin, 0);
+      analogWrite(rpw_pin, motor_speed);
       break;
     case STOP:
-      Serial.println("STOP"); 
-      motor_driver(first_in_pin, LOW, second_in_pin, LOW, enb_pin, 0);
+      analogWrite(lpw_pin, 0);
+      analogWrite(rpw_pin, 0);
       break; 
     default:
     break;
   }  
-}
-
-
-void motor_driver(byte first_in_pin, byte first_in_val,
-                   byte second_in_pin, byte second_in_val,
-                   byte enb_pin, byte enb_val) {
-  digitalWrite (first_in_pin, first_in_val);
-  digitalWrite (second_in_pin, second_in_val);
-  analogWrite(enb_pin,enb_val);
 }
 
 void getJoystickState(byte data[8])    {
@@ -146,19 +111,29 @@ void getJoystickState(byte data[8])    {
   if(joyX<-100 || joyX>100 || joyY<-100 || joyY>100)     return;      // commmunication error
   // Your code here ...
   /////////////////////////////////////////
-  second_motor(joyY);
-  if (joyY > 0) {
-    digitalWrite(MOTOR_MOSFET_GATE_PIN, HIGH);
-  } else {
-    digitalWrite(MOTOR_MOSFET_GATE_PIN, LOW);
-  }
+  main_motor(joyY);
   servo.write(map(joyX, -99, 99, 90, 150));
   /////////////////////////////////////////
-  Serial.print("Joystick position:  ");
-  Serial.print(joyX);  
-  Serial.print(", ");  
-  Serial.println(joyY); 
 }
+
+//void sendBlueToothData()  {
+// static long previousMillis = 0;
+// long currentMillis = millis();
+// if(currentMillis - previousMillis > sendInterval) {   // send data back to smartphone
+//   previousMillis = currentMillis;
+//
+//// Data frame transmitted back from Arduino to Android device:
+//// < 0X02   Buttons state   0X01   DataField#1   0x04   DataField#2   0x05   DataField#3    0x03 >
+//// < 0X02      "01011"      0X01     "120.00"    0x04     "-4500"     0x05  "Motor enabled" 0x03 >    // example
+//
+//   mySerial.print((char)STX);                                             // Start of Transmission
+//   mySerial.print(getButtonStatusString());  mySerial.print((char)0x1);   // buttons status feedback
+//   mySerial.print(GetdataInt1());            mySerial.print((char)0x4);   // datafield #1
+//   mySerial.print(GetdataFloat2());          mySerial.print((char)0x5);   // datafield #2
+//   mySerial.print(displayStatus);                                         // datafield #3
+//   mySerial.print((char)ETX);                                             // End of Transmission
+// }
+//}
 
 //void getButtonState(int bStatus)  {
 // switch (bStatus) {
@@ -258,4 +233,5 @@ void getJoystickState(byte data[8])    {
 // }
 //// ---------------------------------------------------------------
 //}
+
 
