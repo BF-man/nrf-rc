@@ -4,11 +4,16 @@
 #define MOVE_FORWARD 'F'
 #define MOVE_BACKWARD 'B'
 #define STOP 'S'
+
+#define STEERING_MIN_ANGLE 150
+#define STEERING_MAX_ANGLE 90
+#define MOTOR_MIN_SPEED_PWM 30
+#define MOTOR_MAX_SPEED_PWM 250
+#define JOYSTICK_TRANSMITTING_OFFSET 200
+
 #define BLUETOOTH_TX_PIN 10
 #define BLUETOOTH_RX_PIN 11
 #define SERVO_PIN 6
-#define STEERING_MIN_ANGLE 150
-#define STEERING_MAX_ANGLE 90
 #define MOTOR_LPWM 5
 #define MOTOR_RPWM 3
 
@@ -27,7 +32,7 @@ byte cmd[8] = {0, 0, 0, 0, 0, 0, 0, 0};                 // bytes received
 SoftwareSerial mySerial(BLUETOOTH_TX_PIN,BLUETOOTH_RX_PIN); // BlueTooth module: pin#10=TX pin#11=RX
 Servo servo;
 
-void setup() {
+void setup () {
  Serial.begin(9600);
  while (!Serial) {
     ; // wait for serial port to connect. Needed for native USB port only
@@ -40,82 +45,75 @@ void setup() {
 // while(mySerial.available())  mySerial.read();         // empty RX buffer
 }
 
-void loop() {
- if(mySerial.available())  {                           // data received from smartphone
-   delay(2);
-   cmd[0] =  mySerial.read();  
-   if(cmd[0] == STX)  {
-     int i=1;      
-     while(mySerial.available())  {
-       delay(1);
-       cmd[i] = mySerial.read();
-       if(cmd[i]>127 || i>7)                 break;     // Communication error
-       if((cmd[i]==ETX) && (i==2 || i==7))   break;     // Button or Joystick data
-       i++;
-     }
-//     if     (i==2)          getButtonState(cmd[1]);    // 3 Bytes  ex: < STX "C" ETX >
-//     else if(i==7)          getJoystickState(cmd);     // 6 Bytes  ex: < STX "200" "180" ETX >
-     if(i==7) {
-      getJoystickState(cmd);     // 6 Bytes  ex: < STX "200" "180" ETX >
-     }
-   }
- }
- mySerial.flush();
- Serial.flush();
-// sendBlueToothData(); 
+void loop () {
+  if (!mySerial.available()) return;
+  delay(2);
+  cmd[0] =  mySerial.read();  // data received from smartphone
+  if (cmd[0] != STX) return flushSerials();
+  int i=1;      
+  while (mySerial.available()) {
+    delay(1);
+    cmd[i] = mySerial.read();
+    if (cmd[i] > 127 || i > 7)               break;     // Communication error
+    if ((cmd[i] == ETX) && (i == 2 || i == 7)) break;     // Button or Joystick data
+    i++;
+  }
+  // if (i==2) getButtonState(cmd[1]);    // 3 Bytes  ex: < STX "C" ETX >
+  if (i==7) movementController(getJoystickX(cmd), getJoystickY(cmd)); // 6 Bytes  ex: < STX "200" "180" ETX >
+  flushSerials();
 }
 
-void main_motor(int joystick_val) {
-  byte motor_speed = 0;
- 
-  if (joystick_val > 5) {
-    motor_speed = map(joystick_val, 10, 99, 30, 200);
-    motor_controller(MOVE_FORWARD, motor_speed, MOTOR_LPWM, MOTOR_RPWM);
-  }
-  if (joystick_val < -5) {
-    motor_speed = map((-1) * joystick_val, 10, 99, 30, 200);
-    motor_controller(MOVE_BACKWARD, motor_speed, MOTOR_LPWM, MOTOR_RPWM);
-  }
-  if (joystick_val > -5 && joystick_val < 5) {
-    motor_speed = 0;
-    motor_controller(STOP, motor_speed, MOTOR_LPWM, MOTOR_RPWM);
-  }
+void movementController (int joystickX, int joystickY) {
+  if (joystickX < -100 || joystickX > 100 || joystickY < -100 || joystickY > 100) return;
+  mainMotorController(joystickY);
+  servo.write(map(joystickX, -99, 99, STEERING_MIN_ANGLE, STEERING_MAX_ANGLE));
 }
 
-void motor_controller(int motor_direction,
-                      byte motor_speed,
-                      byte lpw_pin,
-                      byte rpw_pin) {
-  switch (motor_direction) {
+void mainMotorController (int speed) {
+  if (speed > 5) {
+    motorController(MOVE_FORWARD, map(speed, 10, 99, MOTOR_MIN_SPEED_PWM, MOTOR_MAX_SPEED_PWM), MOTOR_LPWM, MOTOR_RPWM);
+    return;
+  }
+  if (speed < -5) {
+    motorController(MOVE_BACKWARD, map((-1) * speed, 10, 99, MOTOR_MIN_SPEED_PWM, MOTOR_MAX_SPEED_PWM), MOTOR_LPWM, MOTOR_RPWM);
+    return;
+  }
+  motorController(STOP, 0, MOTOR_LPWM, MOTOR_RPWM);
+}
+
+void motorController (int direction,
+                      byte speed,
+                      byte lpwPin,
+                      byte rpwPin) {
+  switch (direction) {
     case MOVE_FORWARD:
-      analogWrite(lpw_pin, motor_speed);
-      analogWrite(rpw_pin, 0);
+      analogWrite(lpwPin, speed);
+      analogWrite(rpwPin, 0);
       break;
     case MOVE_BACKWARD:
-      analogWrite(lpw_pin, 0);
-      analogWrite(rpw_pin, motor_speed);
+      analogWrite(lpwPin, 0);
+      analogWrite(rpwPin, speed);
       break;
     case STOP:
-      analogWrite(lpw_pin, 0);
-      analogWrite(rpw_pin, 0);
+      analogWrite(lpwPin, 0);
+      analogWrite(rpwPin, 0);
       break; 
     default:
     break;
   }  
 }
 
-void getJoystickState(byte data[8])    {
-  int joyX = (data[1]-48)*100 + (data[2]-48)*10 + (data[3]-48);       // obtain the Int from the ASCII representation
-  int joyY = (data[4]-48)*100 + (data[5]-48)*10 + (data[6]-48);
-  joyX = joyX - 200;                                                  // Offset to avoid
-  joyY = joyY - 200;                                                  // transmitting negative numbers
+void flushSerials () {
+  mySerial.flush();
+  Serial.flush();
+}
 
-  if(joyX<-100 || joyX>100 || joyY<-100 || joyY>100)     return;      // commmunication error
-  // Your code here ...
-  /////////////////////////////////////////
-  main_motor(joyY);
-  servo.write(map(joyX, -99, 99, STEERING_MIN_ANGLE, STEERING_MAX_ANGLE));
-  /////////////////////////////////////////
+int getJoystickY (byte data[8]) {    
+  return (data[4] - 48) * 100 + (data[5] - 48) * 10 + (data[6] - 48) - JOYSTICK_TRANSMITTING_OFFSET;   // obtain the Int from the ASCII representation
+}
+
+int getJoystickX (byte data[8]) {    
+  return (data[1] - 48) * 100 + (data[2] - 48) * 10 + (data[3] - 48) - JOYSTICK_TRANSMITTING_OFFSET;   // obtain the Int from the ASCII representation
 }
 
 //void sendBlueToothData()  {
