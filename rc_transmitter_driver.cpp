@@ -15,7 +15,8 @@
  * statements not displaying the result and load 
  * 'ping_server_interupt' on the server.
  */
- 
+
+#include <Arduino.h>
 #include <SPI.h>
 #include <Mirf.h>
 #include <nRF24L01.h>
@@ -42,7 +43,13 @@ const int X_pin = 3; // analog pin connected to X output
 const int Y_pin = 2; // analog pin connected to Y output
 const int X2_pin = 1; // analog pin connected to X output
 const int Y2_pin = 0; // analog pin connected to Y output
- 
+
+void setJoystickY (int yValue, int minVal, int maxVal);
+void setJoystickX (int xValue, int minVal, int maxVal);
+int getJoystickY (byte data[8]);
+int getJoystickX (byte data[8]);
+void debugSticks ();
+
 void setup(){
   Serial.begin(9600);
   /*
