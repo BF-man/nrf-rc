@@ -1,4 +1,23 @@
-#include <Arduino.h> 
+/**
+ * An Mirf example which copies back the data it recives.
+ *
+ * Pins:
+ * Hardware SPI:
+ * MISO -> 12
+ * MOSI -> 11
+ * SCK -> 13
+ *
+ * Configurable:
+ * CE -> 8
+ * CSN -> 7
+ *
+ */
+
+#include <SPI.h>
+#include <Mirf.h>
+#include <nRF24L01.h>
+#include <MirfHardwareSpiDriver.h>
+
 #include "SoftwareSerial.h"
 #include <Servo.h>
 
@@ -6,19 +25,19 @@
 #define MOVE_BACKWARD 'B'
 #define STOP 'S'
 
-#define STEERING_MIN_ANGLE 150
-#define STEERING_MAX_ANGLE 90
+#define STEERING_MIN_ANGLE 130 //150
+#define STEERING_MAX_ANGLE 50 //90
 #define MOTOR_MIN_SPEED_PWM 30
 #define MOTOR_MAX_SPEED_PWM 250
 #define JOYSTICK_TRANSMITTING_OFFSET 200
 
-#define BLUETOOTH_TX_PIN 10
-#define BLUETOOTH_RX_PIN 11
+//#define BLUETOOTH_TX_PIN 10
+//#define BLUETOOTH_RX_PIN 11
 #define SERVO_PIN 6
 #define MOTOR_LPWM 5
 #define MOTOR_RPWM 3
 
-#define MOTOR_MOSFET_GATE_PIN 9
+//#define MOTOR_MOSFET_GATE_PIN 9
 
 #define    STX          0x02
 #define    ETX          0x03
@@ -27,21 +46,12 @@
 #define    FAST         250 // Datafields refresh rate (ms)
 
 byte cmd[8] = {0, 0, 0, 0, 0, 0, 0, 0};                 // bytes received
+byte cmd2[8] = {0, 0, 0, 0, 0, 0, 0, 0}; 
 
 // * RX is digital pin 10 (connect to TX of other device)
 // * TX is digital pin 11 (connect to RX of other device)
-SoftwareSerial mySerial(BLUETOOTH_TX_PIN,BLUETOOTH_RX_PIN); // BlueTooth module: pin#10=TX pin#11=RX
+//SoftwareSerial mySerial(BLUETOOTH_TX_PIN,BLUETOOTH_RX_PIN); // BlueTooth module: pin#10=TX pin#11=RX
 Servo servo;
-
-void movementController (int joystickX, int joystickY);
-void mainMotorController (int speed);
-void motorController (int direction,
-                      byte speed,
-                      byte lpwPin,
-                      byte rpwPin);
-void flushSerials ();
-int getJoystickY (byte data[8]);
-int getJoystickX (byte data[8]);
 
 void setup () {
  Serial.begin(9600);
@@ -49,29 +59,137 @@ void setup () {
     ; // wait for serial port to connect. Needed for native USB port only
  }
  servo.attach(SERVO_PIN);
- mySerial.begin(57600);   // 57600 = max value for SoftwareSerial
+ //mySerial.begin(57600);   // 57600 = max value for SoftwareSerial
  pinMode (MOTOR_LPWM, OUTPUT);
  pinMode (MOTOR_RPWM, OUTPUT);
- pinMode (MOTOR_MOSFET_GATE_PIN, OUTPUT);
+ //pinMode (MOTOR_MOSFET_GATE_PIN, OUTPUT);
 // while(mySerial.available())  mySerial.read();         // empty RX buffer
+
+
+/*
+   * Set the SPI Driver.
+   */
+ 
+  Mirf.spi = &MirfHardwareSpi;
+ 
+  /*
+   * Setup pins / SPI.
+   */
+ 
+  Mirf.init();
+ 
+  /*
+   * Configure reciving address.
+   */
+ 
+  Mirf.setRADDR((byte *)"serv1");
+ 
+  /*
+   * Set the payload length to sizeof(unsigned long) the
+   * return type of millis().
+   *
+   * NB: payload on client and server must be the same.
+   */
+ 
+  Mirf.payload = sizeof(cmd);
+ 
+  /*
+   * Write channel and payload config then power up reciver.
+   */
+ 
+  Mirf.config();
+ 
+  Serial.println("Listening..."); 
 }
 
 void loop () {
-  if (!mySerial.available()) return;
+   /*
+   * A buffer to store the data.
+   */
+ 
+  //byte data[Mirf.payload];
+ 
+  /*
+   * If a packet has been recived.
+   *
+   * isSending also restores listening mode when it 
+   * transitions from true to false.
+   */
+ 
+  if(!Mirf.isSending() && Mirf.dataReady()){
+    //Serial.println("Got packet");
+    //Serial.print(cmd[0]);
+    //Serial.print('|');
+    //Serial.print(cmd[1]);
+    //Serial.print('|');
+    //Serial.print(cmd[2]);
+    //Serial.print('|');
+    //Serial.print(cmd[3]);
+    //Serial.print('|');
+    //Serial.print(cmd[4]);
+    //Serial.print('|');
+    //Serial.print(cmd[5]);
+    //Serial.print('|');
+    //Serial.print(cmd[6]);
+    //Serial.print('|');
+    //Serial.print(cmd[7]);
+    //Serial.print('|');
+    //Serial.println('--------------------');
+ 
+    /*
+     * Get load the packet into the buffer.
+     */
+ 
+    Mirf.getData(cmd);
+ 
+    /*
+     * Set the send address.
+     */
+ 
+ 
+   Mirf.setTADDR((byte *)"clie1");
+ 
+    /*
+     * Send the data back to the client.
+     */
+ 
+    //Mirf.send(data);
+ 
+    /*
+     * Wait untill sending has finished
+     *
+     * NB: isSending returns the chip to receving after returning true.
+     */
+ 
+    //Serial.println("Reply sent.");
+
+
+
+
+
+  //cmd2[0] = 1;
+  //Mirf.send(cmd);
+  //if (!mySerial.available()) return;
   delay(2);
-  cmd[0] =  mySerial.read();  // data received from smartphone
+  //cmd[0] =  mySerial.read();  // data received from smartphone
   if (cmd[0] != STX) return flushSerials();
-  int i=1;      
-  while (mySerial.available()) {
+  //int i=1;      
+  //while (mySerial.available()) {
+  for(int i = 1; i < 8; i++) {
     delay(1);
-    cmd[i] = mySerial.read();
+    //cmd[i] = mySerial.read();
     if (cmd[i] > 127 || i > 7)               break;     // Communication error
     if ((cmd[i] == ETX) && (i == 2 || i == 7)) break;     // Button or Joystick data
-    i++;
-  }
+    //i++;
   // if (i==2) getButtonState(cmd[1]);    // 3 Bytes  ex: < STX "C" ETX >
-  if (i==7) movementController(getJoystickX(cmd), getJoystickY(cmd)); // 6 Bytes  ex: < STX "200" "180" ETX >
+    if (i==7) movementController(getJoystickX(cmd), getJoystickY(cmd)); // 6 Bytes  ex: < STX "200" "180" ETX >
+    if (i==7) cmd2[7] = getJoystickX(cmd);
+    if (i==7) cmd2[6] = getJoystickY(cmd);
+  }
   flushSerials();
+  Mirf.send(cmd2);
+  //Serial.print("END");
+  }
 }
 
 void movementController (int joystickX, int joystickY) {
@@ -115,7 +233,7 @@ void motorController (int direction,
 }
 
 void flushSerials () {
-  mySerial.flush();
+  //mySerial.flush();
   Serial.flush();
 }
 
