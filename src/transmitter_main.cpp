@@ -41,18 +41,11 @@ void setup()
   Serial.begin(9600);
 
   radio.begin();
-
-  //set the address
-  radio.openWritingPipe(receiverAddress);
   radio.setChannel(channel); 
-  // getting_started sketch, and the likelihood of close proximity of the devices. RF24_PA_MAX is default.
-  radio.setPALevel(RF24_PA_LOW);
-  
-  // radio.setDataRate (RF24_2MBPS); 
-  // radio.setDataRate (RF24_1MBPS); 
   radio.setDataRate (RF24_250KBPS); 
-  //Set module as transmitter
-  radio.stopListening();
+  radio.openWritingPipe(receiverAddress);
+  radio.stopListening(); // Set module as transmitter
+
   Serial.println("Beginning ... ");
 }
 

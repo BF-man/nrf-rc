@@ -1,7 +1,6 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <RF24.h>
-// #include "SoftwareSerial.h"
 #include <Servo.h>
 
 #define MOVE_FORWARD 'F'
@@ -20,14 +19,20 @@
 
 #define STX 0x02
 #define ETX 0x03
-#define ledPin 13
-#define SLOW 750 // Datafields refresh rate (ms)
-#define FAST 250 // Datafields refresh rate (ms)
+
+// RADIO
+const byte transmitterAddress[6] = "clie1";
+const byte receiverAddress[6] = "serv1";
+const uint8_t radioChannel = 10;
+RF24 radio(8, 7);
 
 byte cmd[8] = {0, 0, 0, 0, 0, 0, 0, 0}; // bytes received
-// byte cmd2[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
 Servo servo;
+
+const uint32_t timeoutMs = 1000;
+uint32_t connectionLostTimer =  millis();
+const byte loopDelayMs = 50;
 
 void movementController(int joystickX, int joystickY);
 void mainMotorController(int speed);
@@ -38,11 +43,7 @@ void motorController(int direction,
 void flushSerials();
 int getJoystickY(byte data[8]);
 int getJoystickX(byte data[8]);
-
-const byte transmitterAddress[6] = "clie1";
-const byte receiverAddress[6] = "serv1";
-int channel = 10;
-RF24 radio(8, 7);
+void stop();
 
 void setup()
 {
@@ -53,23 +54,26 @@ void setup()
   pinMode(MOTOR_RPWM, OUTPUT);
 
   radio.begin();
-  radio.setChannel(channel);
+  radio.setChannel(radioChannel);
   radio.setDataRate(RF24_250KBPS);
-  // radio.setDataRate (RF24_2MBPS);
-  // radio.setDataRate (RF24_1MBPS);
-  // getting_started sketch, and the likelihood of close proximity of the devices. RF24_PA_MAX is default.
-  radio.setPALevel(RF24_PA_LOW);
 
   radio.openReadingPipe(1, receiverAddress);
   radio.startListening();
 
   Serial.println("Listening...");
+  connectionLostTimer = millis();
 }
 
 void loop()
 {
+   if(millis() - connectionLostTimer > timeoutMs){
+    stop();
+    delay(loopDelayMs);
+  }
+
   if (radio.available())
   {
+    connectionLostTimer = millis();
     // Variable for the received timestamp
     while (radio.available())
     {                                // While there is data ready
@@ -92,14 +96,9 @@ void loop()
 
       if (i == 7)
         movementController(getJoystickX(cmd), getJoystickY(cmd)); // 6 Bytes  ex: < STX "200" "180" ETX >
-      // if (i == 7)
-      //   cmd2[7] = getJoystickX(cmd);
-      // if (i == 7)
-      //   cmd2[6] = getJoystickY(cmd);
     }
-    // flushSerials();
   }
-  delay(50);
+  delay(loopDelayMs);
 }
 
 void movementController(int joystickX, int joystickY)
@@ -108,6 +107,10 @@ void movementController(int joystickX, int joystickY)
     return;
   mainMotorController(joystickY);
   servo.write(map(joystickX, -99, 99, STEERING_MIN_ANGLE, STEERING_MAX_ANGLE));
+}
+
+void stop() {
+  movementController(0, 0);
 }
 
 void mainMotorController(int speed)
@@ -164,101 +167,3 @@ int getJoystickX(byte data[8])
   return (data[1] - 48) * 100 + (data[2] - 48) * 10 + (data[3] - 48) - JOYSTICK_TRANSMITTING_OFFSET; // obtain the Int from the ASCII representation
 }
 
-//void getButtonState(int bStatus)  {
-// switch (bStatus) {
-//// -----------------  BUTTON #1  -----------------------
-//   case 'A':
-//     buttonStatus |= B000001;        // ON
-//     Serial.println("\n** Button_1: ON **");
-//     // your code...
-//     displayStatus = "LED <ON>";
-//     Serial.println(displayStatus);
-//     digitalWrite(ledPin, HIGH);
-//     break;
-//   case 'B':
-//     buttonStatus &= B111110;        // OFF
-//     Serial.println("\n** Button_1: OFF **");
-//     // your code...
-//     displayStatus = "LED <OFF>";
-//     Serial.println(displayStatus);
-//     digitalWrite(ledPin, LOW);
-//     break;
-//
-//// -----------------  BUTTON #2  -----------------------
-//   case 'C':
-//     buttonStatus |= B000010;        // ON
-//     Serial.println("\n** Button_2: ON **");
-//     // your code...
-//     displayStatus = "Button2 <ON>";
-//     Serial.println(displayStatus);
-//     break;
-//   case 'D':
-//     buttonStatus &= B111101;        // OFF
-//     Serial.println("\n** Button_2: OFF **");
-//     // your code...
-//     displayStatus = "Button2 <OFF>";
-//     Serial.println(displayStatus);
-//     break;
-//
-//// -----------------  BUTTON #3  -----------------------
-//   case 'E':
-//     buttonStatus |= B000100;        // ON
-//     Serial.println("\n** Button_3: ON **");
-//     // your code...
-//     displayStatus = "Motor #1 enabled"; // Demo text message
-//     Serial.println(displayStatus);
-//     break;
-//   case 'F':
-//     buttonStatus &= B111011;      // OFF
-//     Serial.println("\n** Button_3: OFF **");
-//     // your code...
-//     displayStatus = "Motor #1 stopped";
-//     Serial.println(displayStatus);
-//     break;
-//
-//// -----------------  BUTTON #4  -----------------------
-//   case 'G':
-//     buttonStatus |= B001000;       // ON
-//     Serial.println("\n** Button_4: ON **");
-//     // your code...
-//     displayStatus = "Datafield update <FAST>";
-//     Serial.println(displayStatus);
-//     sendInterval = FAST;
-//     break;
-//   case 'H':
-//     buttonStatus &= B110111;    // OFF
-//     Serial.println("\n** Button_4: OFF **");
-//     // your code...
-//     displayStatus = "Datafield update <SLOW>";
-//     Serial.println(displayStatus);
-//     sendInterval = SLOW;
-//    break;
-//
-//// -----------------  BUTTON #5  -----------------------
-//   case 'I':           // configured as momentary button
-////      buttonStatus |= B010000;        // ON
-//     Serial.println("\n** Button_5: ++ pushed ++ **");
-//     // your code...
-//     displayStatus = "Button5: <pushed>";
-//     break;
-////   case 'J':
-////     buttonStatus &= B101111;        // OFF
-////     // your code...
-////     break;
-//
-//// -----------------  BUTTON #6  -----------------------
-//   case 'K':
-//     buttonStatus |= B100000;        // ON
-//     Serial.println("\n** Button_6: ON **");
-//     // your code...
-//      displayStatus = "Button6 <ON>"; // Demo text message
-//    break;
-//   case 'L':
-//     buttonStatus &= B011111;        // OFF
-//     Serial.println("\n** Button_6: OFF **");
-//     // your code...
-//     displayStatus = "Button6 <OFF>";
-//     break;
-// }
-//// ---------------------------------------------------------------
-//}
