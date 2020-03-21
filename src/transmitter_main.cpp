@@ -17,8 +17,6 @@
 
 #define TRANSMITTING_DELAY 50
 byte cmd[8] = {STX, 0, 0, 0, 0, 0, 0, 0};
-byte cmd2[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-const int SW_pin = 2; // digital pin connected to switch output
 const int X_pin = 3;  // analog pin connected to X output
 const int Y_pin = 2;  // analog pin connected to Y output
 const int X2_pin = 1; // analog pin connected to X output
@@ -34,25 +32,25 @@ void debugSticks();
 RF24 radio(8, 7);
 
 //address through which two modules communicate.
-const byte address[6] = "clie1";
-int channel = 0;
+const byte transmitterAddress[6] = "clie1";
+const byte receiverAddress[6] = "serv1";
+int channel = 10;
 
 void setup()
 {
   Serial.begin(9600);
 
-  pinMode(SW_pin, INPUT);
-  digitalWrite(SW_pin, HIGH);
-
   radio.begin();
 
   //set the address
-  radio.openWritingPipe(address);
+  radio.openWritingPipe(receiverAddress);
   radio.setChannel(channel); 
+  // getting_started sketch, and the likelihood of close proximity of the devices. RF24_PA_MAX is default.
+  radio.setPALevel(RF24_PA_LOW);
   
   // radio.setDataRate (RF24_2MBPS); 
-  radio.setDataRate (RF24_1MBPS); 
-  // radio.setDataRate (RF24_250KBPS); 
+  // radio.setDataRate (RF24_1MBPS); 
+  radio.setDataRate (RF24_250KBPS); 
   //Set module as transmitter
   radio.stopListening();
   Serial.println("Beginning ... ");
@@ -74,8 +72,8 @@ void loop()
   else
   {
     Serial.println("Fail");
-    Serial.println(channel);
-    radio.setChannel(channel++); 
+    // Serial.println(channel);
+    // radio.setChannel(channel++); 
   }
 
   delay(TRANSMITTING_DELAY);
@@ -138,9 +136,6 @@ int getJoystickX(byte data[8])
 
 void debugSticks()
 {
-  Serial.print("Switch:  ");
-  Serial.print(digitalRead(SW_pin));
-  Serial.print('|');
   Serial.print("1-st: ");
   Serial.print(analogRead(X_pin));
   Serial.print('|');
