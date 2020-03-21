@@ -12,7 +12,7 @@
  * CSN -> 7
  *
  */
-
+#include <Arduino.h> 
 #include <SPI.h>
 #include <Mirf.h>
 #include <nRF24L01.h>
@@ -52,6 +52,17 @@ byte cmd2[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 // * TX is digital pin 11 (connect to RX of other device)
 //SoftwareSerial mySerial(BLUETOOTH_TX_PIN,BLUETOOTH_RX_PIN); // BlueTooth module: pin#10=TX pin#11=RX
 Servo servo;
+
+void movementController (int joystickX, int joystickY);
+void mainMotorController (int speed);
+void motorController (int direction,
+                      byte speed,
+                      byte lpwPin,
+                      byte rpwPin);
+void flushSerials ();
+int getJoystickY (byte data[8]);
+int getJoystickX (byte data[8]);
+
 
 void setup () {
  Serial.begin(9600);
