@@ -18,7 +18,6 @@
 #define MOTOR_RPWM 3
 
 #define STX 0x02
-#define ETX 0x03
 
 // RADIO
 const byte transmitterAddress[6] = "clie1";
@@ -31,8 +30,7 @@ byte cmd[8] = {0, 0, 0, 0, 0, 0, 0, 0}; // bytes received
 Servo servo;
 
 const uint32_t timeoutMs = 1000;
-uint32_t connectionLostTimer =  millis();
-const byte loopDelayMs = 50;
+uint32_t connectionLostTimer = millis();
 
 void movementController(int joystickX, int joystickY);
 void mainMotorController(int speed);
@@ -40,10 +38,8 @@ void motorController(int direction,
                      byte speed,
                      byte lpwPin,
                      byte rpwPin);
-void flushSerials();
 int getJoystickY(byte data[8]);
 int getJoystickX(byte data[8]);
-void stop();
 
 void setup()
 {
@@ -66,9 +62,10 @@ void setup()
 
 void loop()
 {
-   if(millis() - connectionLostTimer > timeoutMs){
-    stop();
-    delay(loopDelayMs);
+  if (millis() - connectionLostTimer > timeoutMs)
+  {
+    movementController(0, 0);
+    connectionLostTimer = millis();
   }
 
   if (radio.available())
@@ -79,26 +76,9 @@ void loop()
     {                                // While there is data ready
       radio.read(&cmd, sizeof(cmd)); // Get the payload
     }
-
-    delay(2);
-
-    // if (cmd[0] != STX)
-    //   return flushSerials();
-
-    for (int i = 1; i < 8; i++)
-    {
-      delay(1);
-
-      // if (cmd[i] > 127 || i > 7)
-      //   break; // Communication error
-      // if ((cmd[i] == ETX) && (i == 2 || i == 7))
-      //   break; // Button or Joystick data
-
-      if (i == 7)
-        movementController(getJoystickX(cmd), getJoystickY(cmd)); // 6 Bytes  ex: < STX "200" "180" ETX >
-    }
+    if (cmd[0] != STX) return;
+    movementController(getJoystickX(cmd), getJoystickY(cmd));
   }
-  delay(loopDelayMs);
 }
 
 void movementController(int joystickX, int joystickY)
@@ -107,10 +87,6 @@ void movementController(int joystickX, int joystickY)
     return;
   mainMotorController(joystickY);
   servo.write(map(joystickX, -99, 99, STEERING_MIN_ANGLE, STEERING_MAX_ANGLE));
-}
-
-void stop() {
-  movementController(0, 0);
 }
 
 void mainMotorController(int speed)
@@ -152,11 +128,6 @@ void motorController(int direction,
   }
 }
 
-void flushSerials()
-{
-  Serial.flush();
-}
-
 int getJoystickY(byte data[8])
 {
   return (data[4] - 48) * 100 + (data[5] - 48) * 10 + (data[6] - 48) - JOYSTICK_TRANSMITTING_OFFSET; // obtain the Int from the ASCII representation
@@ -166,4 +137,3 @@ int getJoystickX(byte data[8])
 {
   return (data[1] - 48) * 100 + (data[2] - 48) * 10 + (data[3] - 48) - JOYSTICK_TRANSMITTING_OFFSET; // obtain the Int from the ASCII representation
 }
-

@@ -3,7 +3,6 @@
 #include <RF24.h>
 
 #define STX 0x02
-#define ETX 0x03
 #define JOYSTICK_TRANSMITTING_OFFSET 200
 // TODO auto calibration
 #define X1_MIN 0
@@ -58,18 +57,7 @@ void loop()
 
   bool result = radio.write(&cmd,sizeof(cmd));
 
-  if (result)
-  {
-    Serial.println("Success");
-  }
-  else
-  {
-    Serial.println("Fail");
-    // Serial.println(channel);
-    // radio.setChannel(channel++); 
-  }
-
-  delay(TRANSMITTING_DELAY);
+  if (!result) Serial.println("Fail");
 }
 
 void setJoystickY(int yValue, int minVal, int maxVal)
