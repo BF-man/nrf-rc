@@ -107,7 +107,7 @@ void mainMotorController(int throttle, int maxSpeed)
 {
   const int speed = getMotorSpeed(throttle, STICK_MAX);
   if (speed > 0) return motorController(MOVE_FORWARD, speed, MOTOR_LPWM, MOTOR_RPWM);
-  if (speed < 0) return motorController(MOVE_BACKWARD, speed, MOTOR_LPWM, MOTOR_RPWM);
+  if (speed < 0) return motorController(MOVE_BACKWARD, (-1) * speed, MOTOR_LPWM, MOTOR_RPWM);
   motorController(STOP, speed, MOTOR_LPWM, MOTOR_RPWM);
 }
 
