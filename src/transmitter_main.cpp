@@ -6,6 +6,9 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
+#include <Statistics.h>
+#include <nrfrc_config.h>
+
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 
@@ -13,7 +16,6 @@
 #define OLED_RESET 4 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-#include <Statistics.h>
 
 #define JOYSTICK_TRANSMITTING_OFFSET 200
 // TODO auto calibration
@@ -65,7 +67,6 @@ RF24 radio(8, 7);
 //address through which two modules communicate.
 const byte transmitterAddress[6] = "clie1";
 const byte receiverAddress[6] = "serv1";
-int channel = 10;
 
 void displayStatistics(unsigned int iterationsCount, byte failsCount, float failRate, byte avgMs, byte maxMs, byte momentMs);
 
@@ -76,14 +77,15 @@ void setup()
   Serial.begin(9600);
 
   radio.begin();
-  radio.setChannel(channel);
+  radio.setChannel(NRFRC_CONFIG_RADIO_CHANNEL);
   radio.setDataRate(RF24_250KBPS);
   radio.openWritingPipe(receiverAddress);
+  radio.setPALevel(RF24_PA_MAX);
   radio.stopListening(); // Set module as transmitter
 
   Serial.print("Payload size: ");
   Serial.println(sizeof(controllerState));
-  
+
 
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C))
   {

@@ -2,6 +2,7 @@
 #include <SPI.h>
 #include <RF24.h>
 #include <Servo.h>
+#include <nrfrc_config.h>
 
 #define MOVE_FORWARD 'F'
 #define MOVE_BACKWARD 'B'
@@ -36,7 +37,6 @@ ControllerState controllerState;
 // RADIO
 const byte transmitterAddress[6] = "clie1";
 const byte receiverAddress[6] = "serv1";
-const uint8_t radioChannel = 10;
 RF24 radio(8, 7);
 
 Servo servo;
@@ -61,8 +61,9 @@ void setup()
   pinMode(MOTOR_RPWM, OUTPUT);
 
   radio.begin();
-  radio.setChannel(radioChannel);
+  radio.setChannel(NRFRC_CONFIG_RADIO_CHANNEL);
   radio.setDataRate(RF24_250KBPS);
+  radio.setPALevel(RF24_PA_MAX);
 
   radio.openReadingPipe(1, receiverAddress);
   radio.startListening();
@@ -98,7 +99,7 @@ void movementController(int joystickX, int joystickY)
     // Serial.println('Stick overload!');
     return;
   }
-    
+
   mainMotorController(joystickY, STICK_MAX);
   servo.write(map(joystickX, STICK_MIN, STICK_MAX, STEERING_MIN_ANGLE, STEERING_MAX_ANGLE));
 }
