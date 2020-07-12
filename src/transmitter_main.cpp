@@ -78,10 +78,11 @@ void setup()
 
   radio.begin();
   radio.setChannel(NRFRC_CONFIG_RADIO_CHANNEL);
-  radio.setDataRate(RF24_250KBPS);
+  radio.setDataRate(NRFRC_CONFIG_RADIO_DATA_RATE);
   radio.openWritingPipe(receiverAddress);
   radio.setPALevel(RF24_PA_MAX);
   radio.stopListening(); // Set module as transmitter
+  radio.setAutoAck(NRFRC_CONFIG_RADIO_ACK_ENABLED);
 
   Serial.print("Payload size: ");
   Serial.println(sizeof(controllerState));

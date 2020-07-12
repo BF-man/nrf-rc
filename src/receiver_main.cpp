@@ -62,8 +62,9 @@ void setup()
 
   radio.begin();
   radio.setChannel(NRFRC_CONFIG_RADIO_CHANNEL);
-  radio.setDataRate(RF24_250KBPS);
+  radio.setDataRate(NRFRC_CONFIG_RADIO_DATA_RATE);
   radio.setPALevel(RF24_PA_MAX);
+  radio.setAutoAck(NRFRC_CONFIG_RADIO_ACK_ENABLED);
 
   radio.openReadingPipe(1, receiverAddress);
   radio.startListening();
