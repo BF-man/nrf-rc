@@ -21,6 +21,10 @@
 #define MOTOR_RPWM 3
 #define MOTOR_THROTTLE_THRESHOLD 5
 
+byte SOFT_START_MULTIPLEXER = 80;
+byte SOFT_START_CURRENT_SPEED_MULTIPLEXER = 1;
+byte SOFT_START_BURST_ADD_PERCENTAGE = 20;
+
 struct StickState
 {
   int x;
@@ -43,6 +47,7 @@ Servo servo;
 
 const uint32_t timeoutMs = 1000;
 uint32_t connectionLostTimer = millis();
+uint32_t loopTimer = millis();
 
 void movementController(int joystickX, int joystickY);
 void mainMotorController(int throttle, int maxSpeed);
@@ -51,6 +56,7 @@ void motorController(int direction,
                      byte speed,
                      byte lpwPin,
                      byte rpwPin);
+int smoothThrottleChange(int throttle);
 
 void setup()
 {
@@ -75,6 +81,7 @@ void setup()
 
 void loop()
 {
+  loopTimer = millis();
   if (millis() - connectionLostTimer > timeoutMs)
   {
     Serial.println("Connection lost");
@@ -87,16 +94,22 @@ void loop()
     connectionLostTimer = millis();
 
     while (radio.available())
-    {                                // While there is data ready
+    {                                                        // While there is data ready
       radio.read(&controllerState, sizeof(controllerState)); // Get the payload
     }
     movementController(controllerState.leftStick.x, controllerState.rightStick.y);
   }
+
+  // uint32_t looptime = millis() - loopTimer;
+  // if (looptime > 5) {
+  //   Serial.println("Loop: " + String(looptime));
+  // }
 }
 
 void movementController(int joystickX, int joystickY)
 {
-  if (joystickX < STICK_MIN || joystickX > STICK_MAX || joystickY < STICK_MIN || joystickY > STICK_MAX) {
+  if (joystickX < STICK_MIN || joystickX > STICK_MAX || joystickY < STICK_MIN || joystickY > STICK_MAX)
+  {
     // Serial.println('Stick overload!');
     return;
   }
@@ -107,18 +120,31 @@ void movementController(int joystickX, int joystickY)
 
 void mainMotorController(int throttle, int maxSpeed)
 {
-  const int speed = getMotorSpeed(throttle, STICK_MAX);
-  if (speed > 0) return motorController(MOVE_FORWARD, speed, MOTOR_LPWM, MOTOR_RPWM);
-  if (speed < 0) return motorController(MOVE_BACKWARD, (-1) * speed, MOTOR_LPWM, MOTOR_RPWM);
-  motorController(STOP, speed, MOTOR_LPWM, MOTOR_RPWM);
+  static int direction = STOP;
+  const int smoothedThrottle = smoothThrottleChange(throttle);
+
+  const int speed = getMotorSpeed(smoothedThrottle, STICK_MAX);
+  const byte absSpeed = abs(speed);
+  // if (speed != 0) Serial.println(speed);
+  if (speed > 0)
+    direction = MOVE_FORWARD;
+  if (speed < 0)
+    direction = MOVE_BACKWARD;
+  if (speed == 0)
+    direction = STOP;
+
+  // Serial.println("sp: " + String(speed) + "; dir: " + String(direction) + "; smSp: " + String(absSpeed));
+  return motorController(direction, absSpeed, MOTOR_LPWM, MOTOR_RPWM);
 }
 
-int getMotorSpeed(int throttle, int maxThrottle) {
+int getMotorSpeed(int throttle, int maxThrottle)
+{
   if (throttle > MOTOR_THROTTLE_THRESHOLD)
   {
     return map(throttle, 0, maxThrottle, MOTOR_MIN_SPEED_PWM, MOTOR_MAX_SPEED_PWM);
   }
-  if (throttle < -MOTOR_THROTTLE_THRESHOLD) return (-1) * getMotorSpeed((-1) * throttle, maxThrottle);
+  if (throttle < -MOTOR_THROTTLE_THRESHOLD)
+    return (-1) * getMotorSpeed((-1) * throttle, maxThrottle);
   return 0;
 }
 
@@ -127,6 +153,7 @@ void motorController(int direction,
                      byte lpwPin,
                      byte rpwPin)
 {
+  // return;
   switch (direction)
   {
   case MOVE_FORWARD:
@@ -144,4 +171,81 @@ void motorController(int direction,
   default:
     break;
   }
+}
+
+int smoothThrottleChange(int rawThrottle)
+{
+  static uint32_t smoothStartUpTimer = 0;
+  static uint32_t smoothStartDownTimer = 0;
+  static int currentSpeed = map(rawThrottle, -1025, 1025, 0, 1024);
+  ;
+  const int throttle = map(rawThrottle, -1025, 1025, 0, 1024);
+
+  if (throttle > currentSpeed && smoothStartUpTimer == 0)
+  {
+    // currentSpeed = min(currentSpeed + (throttle / (currentSpeed + 1)) / SOFT_START_BURST_ADD_PERCENTAGE, throttle);
+    smoothStartUpTimer = millis();
+    smoothStartDownTimer = 0;
+    // Serial.print(" IF ");
+  }
+
+  if (throttle <= currentSpeed && smoothStartDownTimer == 0)
+  {
+    // Serial.print(" ELSE ");
+    smoothStartDownTimer = millis();
+    smoothStartUpTimer = 0;
+    // currentSpeed = max(floor(currentSpeed * 0.8), throttle);
+  }
+
+  if (throttle == currentSpeed)
+  {
+    smoothStartDownTimer = 0;
+    smoothStartUpTimer = 0;
+  }
+
+  if (smoothStartUpTimer > 0)
+  {
+    // Serial.println("up " + String(currentSpeed) + " " + String(throttle));
+
+    int devider = max((throttle - currentSpeed * SOFT_START_CURRENT_SPEED_MULTIPLEXER), 1);
+    uint32_t timeDIff = millis() - smoothStartUpTimer;
+    currentSpeed += timeDIff * SOFT_START_MULTIPLEXER / devider;
+    currentSpeed = min(currentSpeed, throttle);
+    // Serial.println("speed: " + String(speed) + "; currentSpeed: " + String(currentSpeed) + "; timeDIff: " + String(timeDIff) + "; devider: " + String(devider));
+    // Serial.print(speed);
+    // Serial.print("; currentSpeed: ");
+    // // Serial.print(nextSpeed);
+    // // Serial.print(" ");
+    // Serial.println(currentSpeed);
+    // if (currentSpeed == throttle) Serial.println(timeDIff);
+
+    // Serial.print("; timeDIff: ");
+    // Serial.print(timeDIff);
+    // Serial.print("; devider: ");
+    // Serial.println(devider);
+    // Serial.println("up2 " + String(currentSpeed) + " " + String(throttle));
+  }
+
+  if (smoothStartDownTimer > 0)
+  {
+    // Serial.println("down " + String(currentSpeed) + " " + String(throttle));
+    uint32_t timeDIff = millis() - smoothStartDownTimer;
+    // = МАКС(D1 - A2 * ((D1 - $H$1) / МАКС((D1 + $H$1); 1)); $H$1)
+    // = МАКС(D1 - A2 * (D1 + $H$1) / $H$2; $H$1)
+    currentSpeed -= timeDIff * 0.2 * (float)abs(currentSpeed - throttle) / 2000.0;
+    // Serial.println(String((float)abs(currentSpeed - throttle) / (float)(currentSpeed + throttle + 1)) + " " + String(((float)511 / (float)1536)));
+    currentSpeed = max(currentSpeed, throttle);
+    // Serial.println("down3 " + String(currentSpeed) + " " + String(throttle));
+  }
+
+  // Serial.print(speed);
+  // Serial.print(" ");
+  // Serial.print(nextSpeed);
+  // Serial.print(" ");
+  // Serial.println(currentSpeed);
+  if (currentSpeed != 512)
+    Serial.println(String(currentSpeed) + " " + String(throttle));
+  return map(currentSpeed, 0, 1024, -1024, 1024);
+
+  // return currentSpeed;
 }
