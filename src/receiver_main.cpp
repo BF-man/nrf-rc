@@ -57,6 +57,7 @@ void motorController(int direction,
                      byte lpwPin,
                      byte rpwPin);
 int smoothThrottleChange(int throttle);
+bool equal(uint32_t val1, uint32_t val2, int sigma);
 
 void setup()
 {
@@ -153,7 +154,7 @@ void motorController(int direction,
                      byte lpwPin,
                      byte rpwPin)
 {
-  // return;
+  return;
   switch (direction)
   {
   case MOVE_FORWARD:
@@ -173,79 +174,83 @@ void motorController(int direction,
   }
 }
 
+// #define STICK_MIN -1023
+// #define STICK_MAX 1023
+const uint32_t SM_MAX_THROTTLE = 102300;
+const int SM_MAX_THROTTLE_SPEED = 2000;        // 100 * throttle/ms
+const int SM_THROTTLE_ACCELERATION = 30;       // 100 * throttle/ms2
+const int SIGMA = SM_MAX_THROTTLE_SPEED * 1.2; // * 100
+
 int smoothThrottleChange(int rawThrottle)
 {
-  static uint32_t smoothStartUpTimer = 0;
-  static uint32_t smoothStartDownTimer = 0;
-  static int currentSpeed = map(rawThrottle, -1025, 1025, 0, 1024);
-  ;
-  const int throttle = map(rawThrottle, -1025, 1025, 0, 1024);
+  static uint32_t smoothStartUpTimer = millis();
+  static uint32_t currentThrottle = map(rawThrottle, STICK_MIN, STICK_MAX, 0, SM_MAX_THROTTLE);
+  static int32_t throttleSpeed = 0;
 
-  if (throttle > currentSpeed && smoothStartUpTimer == 0)
+  const uint32_t throttle = map(rawThrottle, STICK_MIN, STICK_MAX, 0, SM_MAX_THROTTLE);
+  const int time = millis() - smoothStartUpTimer;
+
+  const bool areThrottlesEqual = equal(throttle, currentThrottle, SIGMA);
+
+  if (throttle > currentThrottle && !areThrottlesEqual)
   {
-    // currentSpeed = min(currentSpeed + (throttle / (currentSpeed + 1)) / SOFT_START_BURST_ADD_PERCENTAGE, throttle);
-    smoothStartUpTimer = millis();
-    smoothStartDownTimer = 0;
-    // Serial.print(" IF ");
+    throttleSpeed += time * SM_THROTTLE_ACCELERATION;
+  }
+  if (throttle < currentThrottle && !areThrottlesEqual)
+  {
+    throttleSpeed -= time * SM_THROTTLE_ACCELERATION;
+  }
+  if (equal(throttleSpeed, 0, SM_THROTTLE_ACCELERATION * 2))
+    throttleSpeed = 0;
+
+  if (areThrottlesEqual && throttleSpeed > 0)
+  {
+    throttleSpeed = max(throttleSpeed - SM_THROTTLE_ACCELERATION, 0);
+  }
+  if (areThrottlesEqual && throttleSpeed < 0)
+  {
+    throttleSpeed = min(throttleSpeed + SM_THROTTLE_ACCELERATION, 0);
+  }
+  if (abs(throttleSpeed) > SM_MAX_THROTTLE_SPEED)
+  {
+    throttleSpeed = SM_MAX_THROTTLE_SPEED * throttleSpeed / abs(throttleSpeed);
   }
 
-  if (throttle <= currentSpeed && smoothStartDownTimer == 0)
+  if (!areThrottlesEqual)
   {
-    // Serial.print(" ELSE ");
-    smoothStartDownTimer = millis();
-    smoothStartUpTimer = 0;
-    // currentSpeed = max(floor(currentSpeed * 0.8), throttle);
+    if (throttleSpeed < 0 && abs(throttleSpeed) > currentThrottle)
+    {
+      currentThrottle = 0;
+    }
+    else
+    {
+      currentThrottle += throttleSpeed;
+      currentThrottle = min(currentThrottle, SM_MAX_THROTTLE);
+    }
+  }
+  else
+  {
+    // Serial.println(String(currentThrottle) + " " + String(throttleSpeed) + " " + String((int)(currentThrottle + throttleSpeed)) + " " + String(currentThrottle + throttleSpeed));
+
+    currentThrottle = throttle;
   }
 
-  if (throttle == currentSpeed)
-  {
-    smoothStartDownTimer = 0;
-    smoothStartUpTimer = 0;
-  }
+  currentThrottle = max(currentThrottle, 0);
+  currentThrottle = min(currentThrottle, SM_MAX_THROTTLE);
 
-  if (smoothStartUpTimer > 0)
-  {
-    // Serial.println("up " + String(currentSpeed) + " " + String(throttle));
+  const int resultThrottle = map(currentThrottle, 0, SM_MAX_THROTTLE, STICK_MIN, STICK_MAX);
+  const int normalizedThrottle = map(throttle, 0, SM_MAX_THROTTLE, STICK_MIN, STICK_MAX);
+  // if (resultThrottle != normalizedThrottle)
+    // Serial.println(String(currentThrottle) + " " + String(throttle) + " " + String(throttleSpeed) + " " + String(time));
+  // Serial.println(resultThrottle);
 
-    int devider = max((throttle - currentSpeed * SOFT_START_CURRENT_SPEED_MULTIPLEXER), 1);
-    uint32_t timeDIff = millis() - smoothStartUpTimer;
-    currentSpeed += timeDIff * SOFT_START_MULTIPLEXER / devider;
-    currentSpeed = min(currentSpeed, throttle);
-    // Serial.println("speed: " + String(speed) + "; currentSpeed: " + String(currentSpeed) + "; timeDIff: " + String(timeDIff) + "; devider: " + String(devider));
-    // Serial.print(speed);
-    // Serial.print("; currentSpeed: ");
-    // // Serial.print(nextSpeed);
-    // // Serial.print(" ");
-    // Serial.println(currentSpeed);
-    // if (currentSpeed == throttle) Serial.println(timeDIff);
+  smoothStartUpTimer = millis();
+  return resultThrottle;
+}
 
-    // Serial.print("; timeDIff: ");
-    // Serial.print(timeDIff);
-    // Serial.print("; devider: ");
-    // Serial.println(devider);
-    // Serial.println("up2 " + String(currentSpeed) + " " + String(throttle));
-  }
-
-  if (smoothStartDownTimer > 0)
-  {
-    // Serial.println("down " + String(currentSpeed) + " " + String(throttle));
-    uint32_t timeDIff = millis() - smoothStartDownTimer;
-    // = МАКС(D1 - A2 * ((D1 - $H$1) / МАКС((D1 + $H$1); 1)); $H$1)
-    // = МАКС(D1 - A2 * (D1 + $H$1) / $H$2; $H$1)
-    currentSpeed -= timeDIff * 0.2 * (float)abs(currentSpeed - throttle) / 2000.0;
-    // Serial.println(String((float)abs(currentSpeed - throttle) / (float)(currentSpeed + throttle + 1)) + " " + String(((float)511 / (float)1536)));
-    currentSpeed = max(currentSpeed, throttle);
-    // Serial.println("down3 " + String(currentSpeed) + " " + String(throttle));
-  }
-
-  // Serial.print(speed);
-  // Serial.print(" ");
-  // Serial.print(nextSpeed);
-  // Serial.print(" ");
-  // Serial.println(currentSpeed);
-  if (currentSpeed != 512)
-    Serial.println(String(currentSpeed) + " " + String(throttle));
-  return map(currentSpeed, 0, 1024, -1024, 1024);
-
-  // return currentSpeed;
+bool equal(uint32_t val1, uint32_t val2, int sigma)
+{
+  return val1 == val2 ||
+         ((val1 > val2) && (val1 < sigma || (val1 - sigma) <= val2)) ||
+         ((val1 < val2) && (val1 + sigma) >= val2);
 }
