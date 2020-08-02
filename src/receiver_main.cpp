@@ -21,6 +21,10 @@
 #define MOTOR_RPWM 3
 #define MOTOR_THROTTLE_THRESHOLD 5
 
+byte SOFT_START_MULTIPLEXER = 80;
+byte SOFT_START_CURRENT_SPEED_MULTIPLEXER = 1;
+byte SOFT_START_BURST_ADD_PERCENTAGE = 20;
+
 struct StickState
 {
   int x;
@@ -51,6 +55,8 @@ void motorController(int direction,
                      byte speed,
                      byte lpwPin,
                      byte rpwPin);
+int smoothThrottleChange(int throttle);
+bool equal(uint32_t val1, uint32_t val2, int sigma);
 
 void setup()
 {
@@ -87,7 +93,7 @@ void loop()
     connectionLostTimer = millis();
 
     while (radio.available())
-    {                                // While there is data ready
+    {                                                        // While there is data ready
       radio.read(&controllerState, sizeof(controllerState)); // Get the payload
     }
     movementController(controllerState.leftStick.x, controllerState.rightStick.y);
@@ -96,7 +102,8 @@ void loop()
 
 void movementController(int joystickX, int joystickY)
 {
-  if (joystickX < STICK_MIN || joystickX > STICK_MAX || joystickY < STICK_MIN || joystickY > STICK_MAX) {
+  if (joystickX < STICK_MIN || joystickX > STICK_MAX || joystickY < STICK_MIN || joystickY > STICK_MAX)
+  {
     // Serial.println('Stick overload!');
     return;
   }
@@ -107,18 +114,29 @@ void movementController(int joystickX, int joystickY)
 
 void mainMotorController(int throttle, int maxSpeed)
 {
-  const int speed = getMotorSpeed(throttle, STICK_MAX);
-  if (speed > 0) return motorController(MOVE_FORWARD, speed, MOTOR_LPWM, MOTOR_RPWM);
-  if (speed < 0) return motorController(MOVE_BACKWARD, (-1) * speed, MOTOR_LPWM, MOTOR_RPWM);
-  motorController(STOP, speed, MOTOR_LPWM, MOTOR_RPWM);
+  static int direction = STOP;
+  const int smoothedThrottle = smoothThrottleChange(throttle);
+
+  const int speed = getMotorSpeed(smoothedThrottle, STICK_MAX);
+  const byte absSpeed = abs(speed);
+  if (speed > 0)
+    direction = MOVE_FORWARD;
+  if (speed < 0)
+    direction = MOVE_BACKWARD;
+  if (speed == 0)
+    direction = STOP;
+
+  return motorController(direction, absSpeed, MOTOR_LPWM, MOTOR_RPWM);
 }
 
-int getMotorSpeed(int throttle, int maxThrottle) {
+int getMotorSpeed(int throttle, int maxThrottle)
+{
   if (throttle > MOTOR_THROTTLE_THRESHOLD)
   {
     return map(throttle, 0, maxThrottle, MOTOR_MIN_SPEED_PWM, MOTOR_MAX_SPEED_PWM);
   }
-  if (throttle < -MOTOR_THROTTLE_THRESHOLD) return (-1) * getMotorSpeed((-1) * throttle, maxThrottle);
+  if (throttle < -MOTOR_THROTTLE_THRESHOLD)
+    return (-1) * getMotorSpeed((-1) * throttle, maxThrottle);
   return 0;
 }
 
@@ -144,4 +162,78 @@ void motorController(int direction,
   default:
     break;
   }
+}
+
+const uint32_t SM_MAX_THROTTLE = 102300;
+const int SM_MAX_THROTTLE_SPEED = 2000;        // 100 * throttle/ms
+const int SM_THROTTLE_ACCELERATION = 30;       // 100 * throttle/ms2
+const int SIGMA = SM_MAX_THROTTLE_SPEED * 1.2; // * 100
+
+int smoothThrottleChange(int rawThrottle)
+{
+  static uint32_t smoothStartUpTimer = millis();
+  static uint32_t currentThrottle = map(rawThrottle, STICK_MIN, STICK_MAX, 0, SM_MAX_THROTTLE);
+  static int32_t throttleSpeed = 0;
+
+  const uint32_t throttle = map(rawThrottle, STICK_MIN, STICK_MAX, 0, SM_MAX_THROTTLE);
+  const int time = millis() - smoothStartUpTimer;
+
+  const bool areThrottlesEqual = equal(throttle, currentThrottle, SIGMA);
+
+  if (throttle > currentThrottle && !areThrottlesEqual)
+  {
+    throttleSpeed += time * SM_THROTTLE_ACCELERATION;
+  }
+  if (throttle < currentThrottle && !areThrottlesEqual)
+  {
+    throttleSpeed -= time * SM_THROTTLE_ACCELERATION;
+  }
+  if (equal(throttleSpeed, 0, SM_THROTTLE_ACCELERATION * 2))
+    throttleSpeed = 0;
+
+  if (areThrottlesEqual && throttleSpeed > 0)
+  {
+    throttleSpeed = max(throttleSpeed - SM_THROTTLE_ACCELERATION, 0);
+  }
+  if (areThrottlesEqual && throttleSpeed < 0)
+  {
+    throttleSpeed = min(throttleSpeed + SM_THROTTLE_ACCELERATION, 0);
+  }
+  if (abs(throttleSpeed) > SM_MAX_THROTTLE_SPEED)
+  {
+    throttleSpeed = SM_MAX_THROTTLE_SPEED * throttleSpeed / abs(throttleSpeed);
+  }
+
+  if (!areThrottlesEqual)
+  {
+    if (throttleSpeed < 0 && abs(throttleSpeed) > currentThrottle)
+    {
+      currentThrottle = 0;
+    }
+    else
+    {
+      currentThrottle += throttleSpeed;
+      currentThrottle = min(currentThrottle, SM_MAX_THROTTLE);
+    }
+  }
+  else
+  {
+    currentThrottle = throttle;
+  }
+
+  currentThrottle = max(currentThrottle, 0);
+  currentThrottle = min(currentThrottle, SM_MAX_THROTTLE);
+
+  const int resultThrottle = map(currentThrottle, 0, SM_MAX_THROTTLE, STICK_MIN, STICK_MAX);
+  const int normalizedThrottle = map(throttle, 0, SM_MAX_THROTTLE, STICK_MIN, STICK_MAX);
+
+  smoothStartUpTimer = millis();
+  return resultThrottle;
+}
+
+bool equal(uint32_t val1, uint32_t val2, int sigma)
+{
+  return val1 == val2 ||
+         ((val1 > val2) && (val1 < sigma || (val1 - sigma) <= val2)) ||
+         ((val1 < val2) && (val1 + sigma) >= val2);
 }
