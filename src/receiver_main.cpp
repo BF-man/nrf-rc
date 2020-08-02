@@ -47,7 +47,6 @@ Servo servo;
 
 const uint32_t timeoutMs = 1000;
 uint32_t connectionLostTimer = millis();
-uint32_t loopTimer = millis();
 
 void movementController(int joystickX, int joystickY);
 void mainMotorController(int throttle, int maxSpeed);
@@ -82,7 +81,6 @@ void setup()
 
 void loop()
 {
-  loopTimer = millis();
   if (millis() - connectionLostTimer > timeoutMs)
   {
     Serial.println("Connection lost");
@@ -100,11 +98,6 @@ void loop()
     }
     movementController(controllerState.leftStick.x, controllerState.rightStick.y);
   }
-
-  // uint32_t looptime = millis() - loopTimer;
-  // if (looptime > 5) {
-  //   Serial.println("Loop: " + String(looptime));
-  // }
 }
 
 void movementController(int joystickX, int joystickY)
@@ -126,7 +119,6 @@ void mainMotorController(int throttle, int maxSpeed)
 
   const int speed = getMotorSpeed(smoothedThrottle, STICK_MAX);
   const byte absSpeed = abs(speed);
-  // if (speed != 0) Serial.println(speed);
   if (speed > 0)
     direction = MOVE_FORWARD;
   if (speed < 0)
@@ -134,7 +126,6 @@ void mainMotorController(int throttle, int maxSpeed)
   if (speed == 0)
     direction = STOP;
 
-  // Serial.println("sp: " + String(speed) + "; dir: " + String(direction) + "; smSp: " + String(absSpeed));
   return motorController(direction, absSpeed, MOTOR_LPWM, MOTOR_RPWM);
 }
 
@@ -154,7 +145,6 @@ void motorController(int direction,
                      byte lpwPin,
                      byte rpwPin)
 {
-  return;
   switch (direction)
   {
   case MOVE_FORWARD:
@@ -174,8 +164,6 @@ void motorController(int direction,
   }
 }
 
-// #define STICK_MIN -1023
-// #define STICK_MAX 1023
 const uint32_t SM_MAX_THROTTLE = 102300;
 const int SM_MAX_THROTTLE_SPEED = 2000;        // 100 * throttle/ms
 const int SM_THROTTLE_ACCELERATION = 30;       // 100 * throttle/ms2
@@ -230,8 +218,6 @@ int smoothThrottleChange(int rawThrottle)
   }
   else
   {
-    // Serial.println(String(currentThrottle) + " " + String(throttleSpeed) + " " + String((int)(currentThrottle + throttleSpeed)) + " " + String(currentThrottle + throttleSpeed));
-
     currentThrottle = throttle;
   }
 
@@ -240,9 +226,6 @@ int smoothThrottleChange(int rawThrottle)
 
   const int resultThrottle = map(currentThrottle, 0, SM_MAX_THROTTLE, STICK_MIN, STICK_MAX);
   const int normalizedThrottle = map(throttle, 0, SM_MAX_THROTTLE, STICK_MIN, STICK_MAX);
-  // if (resultThrottle != normalizedThrottle)
-    // Serial.println(String(currentThrottle) + " " + String(throttle) + " " + String(throttleSpeed) + " " + String(time));
-  // Serial.println(resultThrottle);
 
   smoothStartUpTimer = millis();
   return resultThrottle;
