@@ -3,23 +3,22 @@
 #include <RF24.h>
 #include <Servo.h>
 #include <nrfrc_config.h>
-
-#define MOVE_FORWARD 'F'
-#define MOVE_BACKWARD 'B'
-#define STOP 'S'
+#include <DoubleBTS7960HBridePWMController.h>
 
 #define STEERING_MIN_ANGLE 130 //150
 #define STEERING_MAX_ANGLE 50  //90
 #define MOTOR_MIN_SPEED_PWM 20
 #define MOTOR_MAX_SPEED_PWM 250
 
+// Sticks
+// TODO: move to config?
 #define STICK_MIN -1023
 #define STICK_MAX 1023
 
+// Channels
 #define SERVO_PIN 6
 #define MOTOR_LPWM 5
 #define MOTOR_RPWM 3
-#define MOTOR_THROTTLE_THRESHOLD 5
 
 byte SOFT_START_MULTIPLEXER = 80;
 byte SOFT_START_CURRENT_SPEED_MULTIPLEXER = 1;
@@ -44,17 +43,13 @@ const byte receiverAddress[6] = "serv1";
 RF24 radio(8, 7);
 
 Servo servo;
+DoubleBTS7960HBridePWMController motorController;
 
 const uint32_t timeoutMs = 1000;
 uint32_t connectionLostTimer = millis();
 
 void movementController(int joystickX, int joystickY);
 void mainMotorController(int throttle, int maxSpeed);
-int getMotorSpeed(int throttle, int maxThrottle);
-void motorController(int direction,
-                     byte speed,
-                     byte lpwPin,
-                     byte rpwPin);
 int smoothThrottleChange(int throttle);
 bool equal(uint32_t val1, uint32_t val2, int sigma);
 
@@ -62,6 +57,7 @@ void setup()
 {
   Serial.begin(9600);
   servo.attach(SERVO_PIN);
+  motorController.attach(MOTOR_LPWM, MOTOR_RPWM);
 
   pinMode(MOTOR_LPWM, OUTPUT);
   pinMode(MOTOR_RPWM, OUTPUT);
@@ -114,54 +110,8 @@ void movementController(int joystickX, int joystickY)
 
 void mainMotorController(int throttle, int maxSpeed)
 {
-  static int direction = STOP;
   const int smoothedThrottle = smoothThrottleChange(throttle);
-
-  const int speed = getMotorSpeed(smoothedThrottle, STICK_MAX);
-  const byte absSpeed = abs(speed);
-  if (speed > 0)
-    direction = MOVE_FORWARD;
-  if (speed < 0)
-    direction = MOVE_BACKWARD;
-  if (speed == 0)
-    direction = STOP;
-
-  return motorController(direction, absSpeed, MOTOR_LPWM, MOTOR_RPWM);
-}
-
-int getMotorSpeed(int throttle, int maxThrottle)
-{
-  if (throttle > MOTOR_THROTTLE_THRESHOLD)
-  {
-    return map(throttle, 0, maxThrottle, MOTOR_MIN_SPEED_PWM, MOTOR_MAX_SPEED_PWM);
-  }
-  if (throttle < -MOTOR_THROTTLE_THRESHOLD)
-    return (-1) * getMotorSpeed((-1) * throttle, maxThrottle);
-  return 0;
-}
-
-void motorController(int direction,
-                     byte speed,
-                     byte lpwPin,
-                     byte rpwPin)
-{
-  switch (direction)
-  {
-  case MOVE_FORWARD:
-    analogWrite(lpwPin, speed);
-    analogWrite(rpwPin, 0);
-    break;
-  case MOVE_BACKWARD:
-    analogWrite(lpwPin, 0);
-    analogWrite(rpwPin, speed);
-    break;
-  case STOP:
-    analogWrite(lpwPin, 0);
-    analogWrite(rpwPin, 0);
-    break;
-  default:
-    break;
-  }
+  motorController.write(map(smoothedThrottle, STICK_MIN, STICK_MAX, 0, 255));
 }
 
 const uint32_t SM_MAX_THROTTLE = 102300;
